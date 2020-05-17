@@ -7,7 +7,9 @@ import org.apache.spark.ml.feature.OneHotEncoder
 import org.apache.spark.ml.feature.VectorAssembler
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.classification.LogisticRegression
+import org.apache.spark.ml.classification.GBTClassifier
 import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator
+import org.apache.spark.ml.tuning.{ParamGridBuilder, CrossValidator}
 object EstimateIncomeCategory {
   case class AdultData(
     age: Double,
@@ -85,16 +87,55 @@ object EstimateIncomeCategory {
     val valData   = trainVal(1)
     
     //fit model on train data
-    val lr = new LogisticRegression().setMaxIter(10).setRegParam(0.1)
-    val model = lr.fit(trainData)
+    val lr = new LogisticRegression()
+    //val model = lr.fit(trainData)  
     
-    val predictions = model.transform(valData)
+    
+    //use parameter tuning using PramaGridBuilder
+    val paramBuilder = new ParamGridBuilder()
+                        .addGrid(lr.regParam, Array(0.01,0.5,2.0))
+                        .addGrid(lr.maxIter,Array(5,10,20))
+                        .addGrid(lr.elasticNetParam,Array(0.2,0.4,0.8))
+                        .build()
+                        
+   //create 5 fold cross validator
+    val crossValidator = new CrossValidator()
+                         .setEstimator(lr)
+                         .setEvaluator(new BinaryClassificationEvaluator)
+                         .setEstimatorParamMaps(paramBuilder)
+                         .setNumFolds(5)
+                         .setParallelism(2)
+                         
+    //it returns the best model
+    val cvModel = crossValidator.fit(trainData)
+    val lrBestModel = cvModel.bestModel
+    println(s"Model was fit using parameters: ${lrBestModel.parent.extractParamMap}")
+    //check performance on test data
+    val predictions = lrBestModel.transform(valData)
     val evaluator = new BinaryClassificationEvaluator().setLabelCol("label")
-    println(evaluator.evaluate(predictions))
-    
-    
+    println("ROC using Logistic Regression: "+evaluator.evaluate(predictions))  
     
    
+    //use GBT and check
+    val gbt = new GBTClassifier()
+    val gbtParam = new ParamGridBuilder()
+                  .addGrid(gbt.maxDepth,Array(2,3,4,5))
+                  .addGrid(gbt.maxIter,Array(10,15,20))
+                  .build()
+    val gbtCV    = new CrossValidator()
+                    .setEstimator(gbt)
+                    .setEvaluator(new BinaryClassificationEvaluator)
+                    .setEstimatorParamMaps(gbtParam)
+                    .setNumFolds(5)
+                    .setParallelism(2)
+                    
+    val gbtModel = gbtCV.fit(trainData)
+    val gbtBestModel = gbtModel.bestModel
+    println(s"GBT Model was fit using parameters: ${gbtBestModel.parent.extractParamMap}")
+    //check performance on test data
+    val gbtPred = gbtBestModel.transform(valData)
+    val gbtEval = new BinaryClassificationEvaluator().setLabelCol("label")
+    println("ROC using GBT: "+evaluator.evaluate(gbtPred))  
     spark.stop()
   }
 }
