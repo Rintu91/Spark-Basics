@@ -1,3 +1,7 @@
+/*Find top reviewed movies from ml-100k dataset
+ * 
+ */
+
 package com.SparkScala
 
 import org.apache.spark._
@@ -16,7 +20,7 @@ object TopMovies {
     codec.onMalformedInput(CodingErrorAction.REPLACE)
     codec.onUnmappableCharacter(CodingErrorAction.REPLACE)
     
-    val lines = Source.fromFile("../../Spark-Basics/Data/ml-100k/u.item").getLines()
+    val lines = Source.fromFile("../../Data/ml-100k/u.item").getLines()
     for(line<-lines){
       val fields = line.split('|')
       if (fields.length >1){
@@ -29,7 +33,7 @@ object TopMovies {
     Logger.getLogger("org").setLevel(Level.ERROR)
     val sc = new SparkContext("local[2]","top10Movie")
     //read movies data
-    val movieID = sc.textFile("../../Spark-Basics/Data/ml-100k/u.data").map(x=>x.split('\t')(1))
+    val movieID = sc.textFile("../../Data/ml-100k/u.data").map(x=>x.split('\t')(1))
     //get the count of entries for each movie ID
     val countViews = movieID.map(x=>(x.toInt,1)).reduceByKey((x,y)=>x+y)
     //countViews.toDebugString
@@ -37,11 +41,11 @@ object TopMovies {
     val sortedCountView = countViews.sortBy(_._2, false)
     //take top 10 values
     val top10 = sortedCountView.take(10)
-    //read movie name data
-    val movieName = getMovieNames()
+    //broadcast movie name to each executor
+    val movieName = sc.broadcast(getMovieNames)
     //movieName.foreach(println)
     for(i<-top10){
-      println(movieName(i._1) + ":" + i._2)
+      println(movieName.value(i._1) + ":" + i._2)
     }    
     sc.stop()
   }
