@@ -1,4 +1,4 @@
-package com.sundogsoftware.scala
+package com.SparkScala
 import org.apache.log4j._
 import org.apache.spark.sql._
 import scala.collection.mutable.ArrayBuffer
